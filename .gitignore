@@ -15,6 +15,9 @@
 #temp files
 *~
 
+#ptx files
+*.ptx
+
 #scene folders
 conference
 crytek-sponza
