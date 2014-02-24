@@ -11,3 +11,15 @@
 *.lai
 *.la
 *.a
+
+#temp files
+*~
+
+#scene folders
+conference
+crytek-sponza
+dragon
+sibenik
+sponza
+teapot
+

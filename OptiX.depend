@@ -1,0 +1,145 @@
+# depslib dependency file v1.0
+1393210696 source:/home/cesar/Documentos/CG/OptiX/main.cpp
+	<iostream>
+	<fstream>
+	<string>
+	<map>
+	<vector>
+	<GL/glew.h>
+	<GL/gl.h>
+	<GL/freeglut.h>
+	<IL/il.h>
+	<assimp/Importer.hpp>
+	<assimp/material.h>
+	<assimp/scene.h>
+	<assimp/postprocess.h>
+	<optixu/optixpp_namespace.h>
+	<optixu/optixu.h>
+	<optixu/optixu_matrix_namespace.h>
+	<optixu/optixu_math_namespace.h>
+	<optixu/optixu_vector_types.h>
+
+1392980939 /opt/optix/include/optixu/optixpp_namespace.h
+	"../optix.h"
+	<windows.h>
+	"../optix_d3d9_interop.h"
+	"../optix_d3d10_interop.h"
+	"../optix_d3d11_interop.h"
+	"../optix_gl_interop.h"
+	"../optix_cuda_interop.h"
+	<string>
+	<vector>
+	<iterator>
+	"optixu_vector_types.h"
+
+1392980939 /opt/optix/include/optix.h
+	"optix_device.h"
+	"optix_host.h"
+
+1392980939 /opt/optix/include/optix_device.h
+	"internal/optix_datatypes.h"
+	"internal/optix_declarations.h"
+	"internal/optix_internal.h"
+
+1392980939 /opt/optix/include/internal/optix_datatypes.h
+	<host_defines.h>
+	"../optixu/optixu_vector_types.h"
+	"optix_declarations.h"
+
+1375611830 /opt/cuda/include/host_defines.h
+
+1392980939 /opt/optix/include/optixu/optixu_vector_types.h
+	<limits.h>
+	<stddef.h>
+	<vector_types.h>
+
+1375611830 /opt/cuda/include/vector_types.h
+	"builtin_types.h"
+	"host_defines.h"
+
+1375611830 /opt/cuda/include/builtin_types.h
+	"device_types.h"
+	"driver_types.h"
+	"surface_types.h"
+	"texture_types.h"
+	"vector_types.h"
+
+1375611830 /opt/cuda/include/device_types.h
+	"host_defines.h"
+
+1375611830 /opt/cuda/include/driver_types.h
+	"host_defines.h"
+	<limits.h>
+	<stddef.h>
+
+1375611830 /opt/cuda/include/surface_types.h
+	"driver_types.h"
+
+1375611830 /opt/cuda/include/texture_types.h
+	"driver_types.h"
+
+1392980939 /opt/optix/include/internal/optix_declarations.h
+	<host_defines.h>
+
+1392980939 /opt/optix/include/internal/optix_internal.h
+	"optix_datatypes.h"
+	"optix_defines.h"
+	"../optix_sizet.h"
+
+1392980939 /opt/optix/include/internal/optix_defines.h
+
+1392980939 /opt/optix/include/optix_sizet.h
+	<sys/types.h>
+	"internal/optix_declarations.h"
+
+1392980939 /opt/optix/include/optix_host.h
+	"internal/optix_declarations.h"
+
+1392980939 /opt/optix/include/optix_d3d9_interop.h
+	<windows.h>
+	<optix_d3d9_interop.h>
+	"optix.h"
+
+1392980939 /opt/optix/include/optix_d3d10_interop.h
+	<windows.h>
+	<optix_d3d10_interop.h>
+	"optix.h"
+
+1392980939 /opt/optix/include/optix_d3d11_interop.h
+	<windows.h>
+	<optix_d3d11_interop.h>
+	"optix.h"
+
+1392980939 /opt/optix/include/optix_gl_interop.h
+	"optix.h"
+	<windows.h>
+	<optix_gl_interop.h>
+
+1392980939 /opt/optix/include/optix_cuda_interop.h
+	"optix.h"
+
+1392980939 /opt/optix/include/optixu/optixu_math_namespace.h
+	"../optix.h"
+	"../internal/optix_datatypes.h"
+	"optixu_vector_functions.h"
+	"../optix_sizet.h"
+	<sys/types.h>
+	<math.h>
+
+1392980939 /opt/optix/include/optixu/optixu_vector_functions.h
+	"optixu_vector_types.h"
+	<vector_functions.h>
+
+1375611830 /opt/cuda/include/vector_functions.h
+	"builtin_types.h"
+	"host_defines.h"
+	"vector_types.h"
+
+1392980939 /opt/optix/include/optixu/optixu.h
+	<stddef.h>
+	"../optix.h"
+
+1392980939 /opt/optix/include/optixu/optixu_matrix_namespace.h
+	"optixu_math_namespace.h"
+	<assert.h>
+
