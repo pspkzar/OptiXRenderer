@@ -15,6 +15,10 @@
 #temp files
 *~
 
+#binaries
+bin/Debug/*
+bin/Releas/*
+
 #ptx files
 *.ptx
 

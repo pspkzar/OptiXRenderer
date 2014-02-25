@@ -32,8 +32,8 @@ Context renderer;
 Buffer out;
 
 Assimp::Importer importer;
-std::string scene_p="crytek-sponza/";
-std::string scene_name="sponza.obj";
+std::string scene_p="sibenik/";
+std::string scene_name="sibenik.obj";
 std::string ptx_p="rt.ptx";
 
 enum ray_types
@@ -265,17 +265,17 @@ inline std::vector<Material> loadMaterials(const aiScene *s, std::map<std::strin
 }
 
 Acceleration newAccelerator(){
-    Acceleration acc=renderer->createAcceleration("Sbvh","Bvh");
+    Acceleration acc=renderer->createAcceleration("Bvh","Bvh");
     return acc;
 }
 
 Acceleration newAcceleratorGeom(){
     //Acceleration acc=renderer->createAcceleration("TriangleKdTree","KdTree");
     Acceleration acc=renderer->createAcceleration("Sbvh","Bvh");
-    acc->setProperty("vertex_buffer_name","pos_buffer");
-    acc->setProperty("vertex_buffer_stride","4");
+    acc->setProperty("vertex_buffer_name","vertex_buffer");
+    acc->setProperty("vertex_buffer_stride","0");
     acc->setProperty("index_buffer_name","index_buffer");
-    acc->setProperty("index_buffer_stride","4");
+    acc->setProperty("index_buffer_stride","0");
     return acc;
 }
 
@@ -314,7 +314,12 @@ Transform loadNode(aiNode* node, GeometryInstance meshes[])
     optix_trans->setChild(child);
     GeometryGroup geom_g=loadGeometryGroup(node,meshes);
 
-    child->setAcceleration(newAccelerator());
+    if(node->mNumChildren>0){
+        child->setAcceleration(newAccelerator());
+    }
+    else{
+        child->setAcceleration(renderer->createAcceleration("NoAccel","NoAccel"));
+    }
     child->setChildCount(1+node->mNumChildren);
     for(unsigned int m=0; m<node->mNumChildren;m++)
     {
@@ -357,11 +362,11 @@ inline Group loadGeometry(const aiScene * s, std::vector<Material> materialVec)
         index_buffer->validate();
         //copy vertices buffer
         //std::cout<<"Loading Vertices"<<std::endl;
-        Buffer pos_buffer=renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT3,mesh->mNumVertices);
-        void * temp_pos=pos_buffer->map();
+        Buffer vertex_buffer=renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT3,mesh->mNumVertices);
+        void * temp_pos=vertex_buffer->map();
         memcpy(temp_pos,mesh->mVertices,mesh->mNumVertices*3*sizeof(float));
-        pos_buffer->unmap();
-        pos_buffer->validate();
+        vertex_buffer->unmap();
+        vertex_buffer->validate();
         //copy normals
         //std::cout<<"Loading Normals"<<std::endl;
         Buffer normal_buffer=renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT3,mesh->mNumVertices);
@@ -386,7 +391,7 @@ inline Group loadGeometry(const aiScene * s, std::vector<Material> materialVec)
         }
         //set atributes
         //std::cout<<"Setting Attributes"<<std::endl;
-        optix_mesh["pos_buffer"]->set(pos_buffer);
+        optix_mesh["vertex_buffer"]->set(vertex_buffer);
         optix_mesh["index_buffer"]->set(index_buffer);
         optix_mesh["normal_buffer"]->set(normal_buffer);
         if(mesh->HasTextureCoords(0)) {
@@ -419,7 +424,7 @@ inline Group loadGeometry(const aiScene * s, std::vector<Material> materialVec)
     Transform t=loadNode(s->mRootNode,meshes);
     Group top = renderer->createGroup();
     top->setChildCount(1);
-    top->setAcceleration(newAccelerator());
+    top->setAcceleration(renderer->createAcceleration("NoAccel","NoAccel"));
     top->setChild(0,t);
     top->validate();
     return top;
@@ -453,7 +458,7 @@ void inline initContext()
     renderer->setExceptionProgram(0,exept);
     renderer->setExceptionEnabled(RT_EXCEPTION_ALL,true);
 
-    renderer->setStackSize(8192);
+    renderer->setStackSize(1500);
 
     renderer->setMissProgram(Phong,miss_radiance);
     renderer->setMissProgram(Shadow,miss_shadow);
@@ -461,9 +466,9 @@ void inline initContext()
     out=genOutputBuffer();
     renderer["output0"]->set(out);
 
-    float3 eye=make_float3(3, 15, 0);
+    float3 eye=make_float3(0, -7, 0);
     float3 up=make_float3(0.f,1.f,0.f);
-    float3 lookAt=make_float3(0.f, 15, 3.f);
+    float3 lookAt=make_float3(100.f, -50, 0.f);
 
     float3 W=normalize(lookAt-eye);
     float3 V=normalize(cross(up,-W));

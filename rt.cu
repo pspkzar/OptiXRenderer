@@ -35,7 +35,7 @@ rtDeclareVariable(float, shininess, , );
 rtDeclareVariable(int, texCount, ,);
 
 //geomerty buffers
-rtBuffer<float3>pos_buffer;
+rtBuffer<float3>vertex_buffer;
 rtBuffer<float3>normal_buffer;
 rtBuffer<int3>index_buffer;
 rtBuffer<float2>texCoord_buffer;
@@ -87,7 +87,7 @@ RT_PROGRAM void closest_hit_radiance(){
 	float3 ffnormal=faceforward(world_shade_normal, -ray.direction, world_geo_normal);
 
 
-    float3 lightPos=make_float3(0.f,0.f,0.f);
+    float3 lightPos=make_float3(0.f,-5.f,0.f);
     float3 pos=ray.origin+ray.direction*t_hit;
     float3 lightDir=normalize(lightPos-pos);
 
@@ -120,21 +120,19 @@ RT_PROGRAM void any_hit_shadow(){
 
 RT_PROGRAM void miss_radiance(){
     rad_res.color=make_float4(0.f,1.f,0.f,0.f);
-    rtTerminateRay();
 }
 
 RT_PROGRAM void miss_shadow(){
     shadow_res.hit=0;
-    rtTerminateRay();
 }
 
 RT_PROGRAM void intersectMesh(int primIdx){
     //get indices
     int3 id=index_buffer[primIdx];
     //get vertices
-    float3 v1=pos_buffer[id.x];
-    float3 v2=pos_buffer[id.y];
-    float3 v3=pos_buffer[id.z];
+    float3 v1=vertex_buffer[id.x];
+    float3 v2=vertex_buffer[id.y];
+    float3 v3=vertex_buffer[id.z];
     //intersect ray with triangle
     float3 n;
     float t, beta, gamma;
@@ -171,9 +169,9 @@ RT_PROGRAM void boundingBoxMesh(int primIdx, float result[6]){
     //get indices
     int3 id=index_buffer[primIdx];
     //load vertices
-    float3 v1=pos_buffer[id.x];
-    float3 v2=pos_buffer[id.y];
-    float3 v3=pos_buffer[id.z];
+    float3 v1=vertex_buffer[id.x];
+    float3 v2=vertex_buffer[id.y];
+    float3 v3=vertex_buffer[id.z];
     const float area = length(cross(v2-v1,v3-v1));
     optix::Aabb* aabb = (optix::Aabb*)result;
     if(area>0.0f)
