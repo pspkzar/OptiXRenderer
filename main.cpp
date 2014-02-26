@@ -8,6 +8,7 @@
 #include <GL/gl.h>
 #include <GL/freeglut.h>
 #include <IL/il.h>
+#include <IL/ilu.h>
 
 #include <assimp/Importer.hpp>
 #include <assimp/material.h>
@@ -21,7 +22,11 @@
 #include <optixu/optixu_math_namespace.h>
 #include <optixu/optixu_vector_types.h>
 
-#define ANISOTROPY 0.0f
+#define ANISOTROPY 1.0f
+#define MIPMAPS 1
+
+#define STEP 2
+#define ANG_STEP 0.1
 
 using namespace optix;
 
@@ -31,9 +36,13 @@ int height=720;
 Context renderer;
 Buffer out;
 
+float3 eye=make_float3(0.f, 0.f, 0.f);
+float3 up=make_float3(0.f,1.f,0.f);
+float3 lookDir=normalize(make_float3(0.f, 0.f, -1.f));
+
 Assimp::Importer importer;
-std::string scene_p="sibenik/";
-std::string scene_name="sibenik.obj";
+std::string scene_p="crytek-sponza/";
+std::string scene_name="sponza.obj";
 std::string ptx_p="rt.ptx";
 
 enum ray_types
@@ -105,7 +114,7 @@ inline const aiScene* loadScene(std::string scene_path)
         return NULL;
     }
 
-    const aiScene *s=importer.ReadFile(scene_path,aiProcessPreset_TargetRealtime_MaxQuality);
+    const aiScene *s=importer.ReadFile(scene_path,aiProcessPreset_TargetRealtime_MaxQuality|aiProcess_OptimizeGraph);
 
     if(!s)
     {
@@ -119,37 +128,58 @@ inline const aiScene* loadScene(std::string scene_path)
 
 TextureSampler newTexture(std::string name)
 {
-    ILuint image=ilGenImage();
+    ILuint image=iluGenImage();
     ilBindImage(image);
-    TextureSampler res;
+    ilEnable(IL_ORIGIN_SET);
+    ilOriginFunc(IL_ORIGIN_LOWER_LEFT);
+    iluBuildMipmaps();
+
+    TextureSampler res=renderer->createTextureSampler();;
+    res->setArraySize(1);
+
+    res->setWrapMode(0,RT_WRAP_REPEAT);
+    res->setWrapMode(1,RT_WRAP_REPEAT);
+    res->setReadMode(RT_TEXTURE_READ_NORMALIZED_FLOAT);
+    res->setIndexingMode(RT_TEXTURE_INDEX_NORMALIZED_COORDINATES);
+    res->setMaxAnisotropy(ANISOTROPY);
+    res->setFilteringModes(RT_FILTER_LINEAR,RT_FILTER_LINEAR,RT_FILTER_NONE);
+
     ILboolean success=ilLoadImage((ILstring)(scene_p+name).c_str());
     if(success){
-        res=renderer->createTextureSampler();
-        ilConvertImage(IL_RGBA,IL_FLOAT);
-        int w=ilGetInteger(IL_IMAGE_WIDTH);
-        int h=ilGetInteger(IL_IMAGE_HEIGHT);
-        void * data= (void*)ilGetData();
-        Buffer tex = renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT4,w,h);
-        void * dataMap = tex->map();
-        ILint size = ilGetInteger(IL_IMAGE_SIZE_OF_DATA);
-        memcpy(dataMap,data,size);
-        ilBindImage(0);
-        ilDeleteImage(image);
-        tex->unmap();
-        tex->validate();
-        res->setWrapMode(0,RT_WRAP_REPEAT);
-        res->setWrapMode(1,RT_WRAP_REPEAT);
-        res->setReadMode(RT_TEXTURE_READ_ELEMENT_TYPE);
-        res->setIndexingMode(RT_TEXTURE_INDEX_NORMALIZED_COORDINATES);
-        res->setFilteringModes(RT_FILTER_LINEAR,RT_FILTER_LINEAR,RT_FILTER_NONE);
-        res->setMipLevelCount(1);
-        res->setArraySize(1);
-        res->setBuffer(0,0,tex);
+        ilConvertImage(IL_RGBA,IL_UNSIGNED_BYTE);
+        std::vector<Buffer> mipmaps;
+        int nmipmap=0;
+        while(ilActiveMipmap(nmipmap)&&nmipmap<MIPMAPS){
+            int w=ilGetInteger(IL_IMAGE_WIDTH);
+            int h=ilGetInteger(IL_IMAGE_HEIGHT);
+            std::cout<<w<<'x'<<h<<std::endl;
+            void * data= (void*)ilGetData();
+            mipmaps.push_back(renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_UNSIGNED_BYTE4,w,h));
+            void * dataMap = mipmaps[nmipmap]->map();
+            ILint size = ilGetInteger(IL_IMAGE_SIZE_OF_DATA);
+            std::cout<<size<<std::endl;
+            memcpy(dataMap,data,size);
+            mipmaps[nmipmap]->unmap();
+            mipmaps[nmipmap]->validate();
+            nmipmap++;
+            ilBindImage(image);
+            iluBuildMipmaps();
+        }
+
+        res->setMipLevelCount(nmipmap);
+        for(int i=0; i<nmipmap; i++){
+            res->setBuffer(0,i,mipmaps[i]);
+        }
+
         res->validate();
     }
     else{
+        res->destroy();
         std::cout<<"Error reading texture: "<<name<<std::endl;
+        return NULL;
     }
+    ilBindImage(0);
+    ilDeleteImage(image);
     return res;
 }
 
@@ -190,6 +220,7 @@ inline std::vector<Material> loadMaterials(const aiScene *s, std::map<std::strin
     std::vector<Material> res;
     Program closest_hit_radiance = renderer->createProgramFromPTXFile(ptx_p,"closest_hit_radiance");
     Program any_hit_shadow = renderer->createProgramFromPTXFile(ptx_p,"any_hit_shadow");
+    Program any_hit_radiance = renderer->createProgramFromPTXFile(ptx_p,"any_hit_radiance");
 
     Buffer noBuffer = renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_BYTE4,1,1);
 
@@ -242,6 +273,9 @@ inline std::vector<Material> loadMaterials(const aiScene *s, std::map<std::strin
             temp.y=spec.g;
             temp.z=spec.b;
             temp.w=spec.a;
+            //float spec_inten=0.f;
+            //aiGetMaterialFloat(mat,AI_MATKEY_SHININESS_STRENGTH,&spec_inten);
+            //temp*=spec_inten;
             optix_mat["specular"]->setFloat(temp);
             std::cout<<"Specular: "<<temp.x<<' '<<temp.y<<' '<<temp.z<<' '<<temp.w<<std::endl;
         }
@@ -256,11 +290,12 @@ inline std::vector<Material> loadMaterials(const aiScene *s, std::map<std::strin
 
         optix_mat->setClosestHitProgram(Phong,closest_hit_radiance);
         optix_mat->setAnyHitProgram(Shadow,any_hit_shadow);
+        optix_mat->setAnyHitProgram(Phong,any_hit_radiance);
         res.push_back(optix_mat);
         matNameToIndex[mat_name.data]=m;
-        //optix_mat->validate();
+        optix_mat->validate();
     }
-    std::cout<<res.size()<<std::endl;
+
     return res;
 }
 
@@ -272,10 +307,10 @@ Acceleration newAccelerator(){
 Acceleration newAcceleratorGeom(){
     //Acceleration acc=renderer->createAcceleration("TriangleKdTree","KdTree");
     Acceleration acc=renderer->createAcceleration("Sbvh","Bvh");
-    acc->setProperty("vertex_buffer_name","vertex_buffer");
-    acc->setProperty("vertex_buffer_stride","0");
-    acc->setProperty("index_buffer_name","index_buffer");
-    acc->setProperty("index_buffer_stride","0");
+    //acc->setProperty("vertex_buffer_name","vertex_buffer");
+    //acc->setProperty("vertex_buffer_stride","4");
+    //acc->setProperty("index_buffer_name","index_buffer");
+    //acc->setProperty("index_buffer_stride","4");
     return acc;
 }
 
@@ -341,14 +376,14 @@ inline Group loadGeometry(const aiScene * s, std::vector<Material> materialVec)
     GeometryInstance meshes[s->mNumMeshes];
     for(unsigned int m=0; m<s->mNumMeshes; m++)
     {
-        //std::cout<<"Loading mesh: "<<m<<std::endl;
+        std::cout<<"Loading mesh: "<<m<<std::endl;
         //Initialize Geometry
-        //std::cout<<"Initializing"<<std::endl;
+        std::cout<<"Initializing"<<std::endl;
         aiMesh * mesh=s->mMeshes[m];
         Geometry optix_mesh=renderer->createGeometry();
         optix_mesh->setPrimitiveCount(mesh->mNumFaces);
         //copy indices buffer to optix
-        //std::cout<<"Loading Indices"<<std::endl;
+        std::cout<<"Loading Indices"<<std::endl;
         optix_mesh->setPrimitiveCount(mesh->mNumFaces);
         Buffer index_buffer = renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_INT3,mesh->mNumFaces);
         int *temp_index=static_cast<int*>(index_buffer->map());
@@ -361,24 +396,26 @@ inline Group loadGeometry(const aiScene * s, std::vector<Material> materialVec)
         index_buffer->unmap();
         index_buffer->validate();
         //copy vertices buffer
-        //std::cout<<"Loading Vertices"<<std::endl;
+        std::cout<<"Loading Vertices"<<std::endl;
         Buffer vertex_buffer=renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT3,mesh->mNumVertices);
         void * temp_pos=vertex_buffer->map();
         memcpy(temp_pos,mesh->mVertices,mesh->mNumVertices*3*sizeof(float));
         vertex_buffer->unmap();
         vertex_buffer->validate();
         //copy normals
-        //std::cout<<"Loading Normals"<<std::endl;
+        std::cout<<"Loading Normals"<<std::endl;
         Buffer normal_buffer=renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT3,mesh->mNumVertices);
         void * temp_norm=normal_buffer->map();
         memcpy(temp_norm,mesh->mNormals,mesh->mNumVertices*3*sizeof(float));
         normal_buffer->unmap();
         normal_buffer->validate();
+        //copy tangents
+
         //copy tex coordinates
         Buffer texCoord_buffer;
         if(mesh->HasTextureCoords(0))
         {
-            //std::cout<<"Loading TexCoord"<<std::endl;
+            std::cout<<"Loading TexCoord"<<std::endl;
             texCoord_buffer=renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT2,mesh->mNumVertices);
             float * temp_texCoord=static_cast<float*>(texCoord_buffer->map());
             for(unsigned int i=0; i<mesh->mNumVertices; i++)
@@ -390,24 +427,24 @@ inline Group loadGeometry(const aiScene * s, std::vector<Material> materialVec)
             texCoord_buffer->unmap();
         }
         //set atributes
-        //std::cout<<"Setting Attributes"<<std::endl;
+        std::cout<<"Setting Attributes"<<std::endl;
         optix_mesh["vertex_buffer"]->set(vertex_buffer);
         optix_mesh["index_buffer"]->set(index_buffer);
         optix_mesh["normal_buffer"]->set(normal_buffer);
         if(mesh->HasTextureCoords(0)) {
-                optix_mesh["texCoord_buffer"]->set(texCoord_buffer);
-                optix_mesh["hasTexCoord"]->setInt(1);
+            optix_mesh["texCoord_buffer"]->set(texCoord_buffer);
+            optix_mesh["hasTexCoord"]->setInt(1);
         }
         else{
             optix_mesh["texCoord_buffer"]->set(noTexCoord);
             optix_mesh["hasTexCoord"]->setInt(0);
         }
         //set optix programs
-        //std::cout<<"Setting Programs"<<std::endl;
+        std::cout<<"Setting Programs"<<std::endl;
         optix_mesh->setBoundingBoxProgram(bounding_box);
         optix_mesh->setIntersectionProgram(intersect);
         //create geometry instance
-        //std::cout<<"Instanctiating"<<std::endl;
+        std::cout<<"Instanctiating"<<std::endl;
         GeometryInstance instance=renderer->createGeometryInstance();
 
         instance->setGeometry(optix_mesh);
@@ -417,7 +454,7 @@ inline Group loadGeometry(const aiScene * s, std::vector<Material> materialVec)
 
         //std::cout<<matName<<std::endl;
         meshes[m]=instance;
-        //td::cout<<"Loaded mesh: "<<m<<std::endl<<std::endl;
+        std::cout<<"Loaded mesh: "<<m<<std::endl<<std::endl;
         optix_mesh->validate();
         instance->validate();
     }
@@ -466,24 +503,54 @@ void inline initContext()
     out=genOutputBuffer();
     renderer["output0"]->set(out);
 
-    float3 eye=make_float3(0, -7, 0);
-    float3 up=make_float3(0.f,1.f,0.f);
-    float3 lookAt=make_float3(100.f, -50, 0.f);
-
-    float3 W=normalize(lookAt-eye);
-    float3 V=normalize(cross(up,-W));
-    float3 U=cross(-W,V);
+    float3 V=normalize(cross(up,-lookDir));
+    float3 U=cross(-lookDir,V);
 
     renderer["eye"]->setFloat(eye);
     renderer["U"]->setFloat(U);
     renderer["V"]->setFloat(V);
-    renderer["W"]->setFloat(W);
+    renderer["W"]->setFloat(lookDir);
     renderer["fov"]->setFloat(1.f);
 
     renderer->validate();
 }
 
+void keyboard(unsigned char key, int x, int y){
 
+    float3 V=normalize(cross(up,-lookDir));
+    float3 U=cross(-lookDir,V);
+
+    switch(key){
+    case 'w':
+        eye+=STEP*lookDir;
+        break;
+    case 's':
+        eye-=STEP*lookDir;
+        break;
+
+    case 'i':
+        lookDir=normalize(lookDir+ANG_STEP*U);
+        break;
+    case 'k':
+        lookDir=normalize(lookDir-ANG_STEP*U);
+        break;
+
+    case 'l':
+        lookDir=normalize(lookDir+ANG_STEP*V);
+        break;
+    case 'j':
+        lookDir=normalize(lookDir-ANG_STEP*V);
+        break;
+    }
+
+    V=normalize(cross(up,-lookDir));
+    U=cross(-lookDir,V);
+
+    renderer["eye"]->setFloat(eye);
+    renderer["U"]->setFloat(U);
+    renderer["V"]->setFloat(V);
+    renderer["W"]->setFloat(lookDir);
+}
 
 
 int main(int argc, char ** argv)
@@ -497,6 +564,7 @@ int main(int argc, char ** argv)
     //callbacks
     glutReshapeFunc(reshape);
     glutDisplayFunc(renderScene);
+    glutKeyboardFunc(keyboard);
     glutIdleFunc(renderScene);
     //init glew
     glewInit();

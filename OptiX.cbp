@@ -43,7 +43,7 @@
 		<Unit filename="main.cpp" />
 		<Unit filename="rt.cu">
 			<Option compile="1" />
-			<Option compiler="gcc" use="1" buildCommand="nvcc -O3 -ptx --use_fast_math -I/opt/optix/include rt.cu -o rt.ptx" />
+			<Option compiler="gcc" use="1" buildCommand="nvcc -O3 --use_fast_math -ptx -I/opt/optix/include rt.cu -o rt.ptx" />
 		</Unit>
 		<Extensions>
 			<code_completion />
@@ -55,6 +55,7 @@
 				<lib name="gl" />
 				<lib name="assimp" />
 				<lib name="IL" />
+				<lib name="ILU" />
 			</lib_finder>
 		</Extensions>
 	</Project>

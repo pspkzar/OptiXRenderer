@@ -86,31 +86,30 @@ RT_PROGRAM void closest_hit_radiance(){
 	float3 world_shade_normal=normalize(rtTransformNormal(RT_OBJECT_TO_WORLD, shading_normal));
 	float3 ffnormal=faceforward(world_shade_normal, -ray.direction, world_geo_normal);
 
-
-    float3 lightPos=make_float3(0.f,-5.f,0.f);
     float3 pos=ray.origin+ray.direction*t_hit;
-    float3 lightDir=normalize(lightPos-pos);
-
-    float intensity=max(dot(lightDir,ffnormal),0.0f);
 
     if(texCount>0)
     {
-        color=diffuse*intensity*tex2D(tex0,texCoord.x,texCoord.y);
+        color=diffuse*tex2D(tex0,texCoord.x,texCoord.y);
     }
     else
     {
-        color=diffuse*intensity;
-    }
-    PerRayDataShadow s;
-
-    float dist=length(lightPos-pos);
-    optix::Ray shadow = optix::make_Ray(pos,lightDir,Shadow,0.1, dist);
-    s.hit=0;
-    rtTrace(top_object,shadow,s);
-    if(s.hit>0){
-        color*=0.5;
+        color=diffuse;
     }
     rad_res.color=color;
+}
+
+RT_PROGRAM void any_hit_radiance(){
+    float4 color;
+    if(texCount>0)
+    {
+        color=diffuse*tex2D(tex0,texCoord.x,texCoord.y);
+    }
+    else
+    {
+        color=diffuse;
+    }
+    if(color.w==0) rtIgnoreIntersection();
 }
 
 RT_PROGRAM void any_hit_shadow(){
