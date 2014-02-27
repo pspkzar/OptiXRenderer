@@ -3,9 +3,15 @@
 #include <optixu/optixu_math.h>
 #include <optixu/optixu_vector_types.h>
 #include <optixu/optixu_aabb.h>
+#include "random.h"
+
+#define SQRT_MS_SAMPLES 4
 
 //light properties
 rtDeclareVariable(float3, lightDir, , );
+
+//sky dome
+rtTextureSampler<float4,2> sky;
 
 //camera properties
 rtDeclareVariable(float3,        eye, , );
@@ -82,6 +88,46 @@ RT_PROGRAM void pinhole_camera(){
 	//output0[launch_index] = make_float4(1.f,0.f,0.f,0.f);
 }
 
+RT_PROGRAM void pinhole_camera_ms(){
+
+    unsigned int seedi, seedj;
+    float ratio=float(launch_dim.x)/float(launch_dim.y);
+    float2 d = make_float2(launch_index) / make_float2(launch_dim) * 2.f - 1.f;
+	float3 ray_origin = eye;
+
+	PerRayDataRadiance rad_res;
+
+    float4 res=make_float4(0.0f,0.0f,0.0f,0.0f);
+
+    int samples=SQRT_MS_SAMPLES*SQRT_MS_SAMPLES;
+
+    float2 scale = 1 / (make_float2(launch_dim) * SQRT_MS_SAMPLES) * 2.0f;
+
+    for(int i=0; i<SQRT_MS_SAMPLES; i++){
+        for(int j=0; j<SQRT_MS_SAMPLES; j++){
+
+            seedi = tea<16>(launch_dim.x*launch_index.y+launch_index.x,2*(i*SQRT_MS_SAMPLES+j));
+			seedj = tea<16>(launch_dim.x*launch_index.y+launch_index.x,2*(i*SQRT_MS_SAMPLES+j)+1);
+
+            float2 sample = d + make_float2((i+1)*rnd(seedi),(j+1)*rnd(seedj)) * scale;
+
+            float3 ray_direction = normalize(sample.x*V*fov*ratio + sample.y*U*fov + W);
+            rad_res.color=make_float4(0.0f,0.0f,0.0f,0.0f);
+            optix::Ray ray = optix::make_Ray(ray_origin, ray_direction, Phong, 0.00000000001, RT_DEFAULT_MAX);
+            rtTrace(top_object, ray, rad_res);
+            res+=rad_res.color;
+
+        }
+    }
+
+    res/=samples;
+
+
+
+	output0[launch_index] = res;
+	//output0[launch_index] = make_float4(1.f,0.f,0.f,0.f);
+}
+
 RT_PROGRAM void exception(){
     int code = rtGetExceptionCode();
     if(code==RT_EXCEPTION_STACK_OVERFLOW){
@@ -96,7 +142,7 @@ RT_PROGRAM void closest_hit_radiance(){
     if(bumpCount){
         float delta_x=tex2D(bump,texCoord.x+0.001,texCoord.y)-tex2D(bump,texCoord.x-0.001,texCoord.y);
         float delta_y=tex2D(bump,texCoord.x,texCoord.y+0.001)-tex2D(bump,texCoord.x,texCoord.y-0.001);
-        local_normal+=7.5f*(delta_x*tangent+delta_y*bitangent);
+        local_normal+=5*(delta_x*tangent+delta_y*bitangent);
     }
 
     float3 world_geo_normal=normalize(rtTransformNormal(RT_OBJECT_TO_WORLD, geometric_normal));
@@ -159,7 +205,16 @@ RT_PROGRAM void any_hit_shadow(){
 }
 
 RT_PROGRAM void miss_radiance(){
-    rad_res.color=make_float4(0.f,1.f,0.f,0.f);
+    //rad_res.color=make_float4(0.f,1.f,0.f,0.f);
+    float3 projected = normalize(make_float3(ray.direction.x, 0.f, ray.direction.z));
+    float r = dot(ray.direction,projected);
+    float cos_theta = dot(projected,make_float3(1.f,0.f,0.f));
+    float sin_theta = dot(projected,make_float3(0.f,0.f,1.f));
+
+    float tex_x=r*cos_theta*0.5f+0.5f;
+    float tex_y=r*sin_theta*0.5f+0.5f;
+
+    rad_res.color=tex2D(sky,tex_x,tex_y);
 }
 
 RT_PROGRAM void miss_shadow(){

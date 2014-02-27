@@ -22,11 +22,19 @@
 #include <optixu/optixu_math_namespace.h>
 #include <optixu/optixu_vector_types.h>
 
-#define ANISOTROPY 1.0f
+#define ANISOTROPY 16.0f
 #define MIPMAPS 1
 
 #define STEP 2
 #define ANG_STEP 0.1
+
+#define USE_MS 0
+
+enum EntryPoints {
+    ENTRY_PINHOLE,
+    ENTRY_PINHOLE_MS,
+    ENTRY_COUNT
+};
 
 using namespace optix;
 
@@ -72,7 +80,7 @@ void reshape(int w, int h)
 
 inline void optix_draw()
 {
-    renderer->launch(0,width,height);
+    renderer->launch(USE_MS,width,height);
     void *pixels=out->map();
     glDrawPixels(width,height,GL_RGBA,GL_FLOAT,pixels);
     out->unmap();
@@ -365,6 +373,9 @@ inline std::vector<Material> loadMaterials(const aiScene *s, std::map<std::strin
             optix_mat["shininess"]->setFloat(shininess);
             std::cout<<"Shininess: "<<shininess<<std::endl;
         }
+        float ior;
+        aiGetMaterialFloat(mat,AI_MATKEY_REFRACTI,&ior);
+        std::cout<<"Index of refraction: "<<ior<<std::endl;
 
         std::cout<<"Loaded material: "<<mat_name.data<<std::endl;
 
@@ -585,11 +596,20 @@ void inline initContext()
     Program miss_shadow = renderer->createProgramFromPTXFile(ptx_p,"miss_shadow");
 
     Program entryPoint=renderer->createProgramFromPTXFile(ptx_p,"pinhole_camera");
+
+    Program entryPoint_ms=renderer->createProgramFromPTXFile(ptx_p,"pinhole_camera_ms");
+
     Program exept=renderer->createProgramFromPTXFile(ptx_p,"exception");
 
-    renderer->setEntryPointCount(1);
-    renderer->setRayGenerationProgram(0,entryPoint);
-    renderer->setExceptionProgram(0,exept);
+
+    renderer->setEntryPointCount(ENTRY_COUNT);
+    renderer->setRayGenerationProgram(ENTRY_PINHOLE,entryPoint);
+    renderer->setRayGenerationProgram(ENTRY_PINHOLE_MS,entryPoint_ms);
+
+    for(int i=0; i<ENTRY_COUNT; i++){
+        renderer->setExceptionProgram(i,exept);
+    }
+
     renderer->setExceptionEnabled(RT_EXCEPTION_ALL,true);
 
     renderer->setStackSize(1500);
@@ -610,6 +630,10 @@ void inline initContext()
     renderer["fov"]->setFloat(1.f);
 
     renderer["lightDir"]->setFloat(normalize(make_float3(-0.5f,-5.f,-1.f)));
+
+    TextureSampler sky = newTexture("../skydome.png");
+
+    renderer["sky"]->set(sky);
 
     renderer->validate();
 }
