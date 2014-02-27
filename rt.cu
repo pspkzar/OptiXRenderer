@@ -205,10 +205,10 @@ RT_PROGRAM void intersectMesh(int primIdx){
                 texCoord=make_float2(1.0f,0.0f);
             }
             //setting attributes
-            shading_normal=normalize((1.0f-beta-gamma)*n1 + beta*n2 +gamma*n3);
+            shading_normal=(1.0f-beta-gamma)*n1 + beta*n2 +gamma*n3;
             geometric_normal=normalize(n);
-            tangent=normalize((1.0f-beta-gamma)*t1 + beta*t2 +gamma*t3);
-            bitangent=normalize((1.0f-beta-gamma)*b1 + beta*b2 +gamma*b3);
+            tangent=(1.0f-beta-gamma)*t1 + beta*t2 +gamma*t3;
+            bitangent=(1.0f-beta-gamma)*b1 + beta*b2 +gamma*b3;
             rtReportIntersection(0);
         }
     }
