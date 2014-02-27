@@ -152,12 +152,12 @@ TextureSampler newTexture(std::string name)
         while(ilActiveMipmap(nmipmap)&&nmipmap<MIPMAPS){
             int w=ilGetInteger(IL_IMAGE_WIDTH);
             int h=ilGetInteger(IL_IMAGE_HEIGHT);
-            std::cout<<w<<'x'<<h<<std::endl;
+            //std::cout<<w<<'x'<<h<<std::endl;
             void * data= (void*)ilGetData();
             mipmaps.push_back(renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_UNSIGNED_BYTE4,w,h));
             void * dataMap = mipmaps[nmipmap]->map();
             ILint size = ilGetInteger(IL_IMAGE_SIZE_OF_DATA);
-            std::cout<<size<<std::endl;
+            //std::cout<<size<<std::endl;
             memcpy(dataMap,data,size);
             mipmaps[nmipmap]->unmap();
             mipmaps[nmipmap]->validate();
@@ -171,6 +171,61 @@ TextureSampler newTexture(std::string name)
             res->setBuffer(0,i,mipmaps[i]);
         }
 
+        res->validate();
+    }
+    else{
+        res->destroy();
+        std::cout<<"Error reading texture: "<<name<<std::endl;
+        return NULL;
+    }
+    ilBindImage(0);
+    ilDeleteImage(image);
+    return res;
+}
+
+TextureSampler newTextureBump(std::string name)
+{
+    ILuint image=iluGenImage();
+    ilBindImage(image);
+    ilEnable(IL_ORIGIN_SET);
+    ilOriginFunc(IL_ORIGIN_LOWER_LEFT);
+    iluBuildMipmaps();
+
+    TextureSampler res=renderer->createTextureSampler();;
+    res->setArraySize(1);
+
+    res->setWrapMode(0,RT_WRAP_REPEAT);
+    res->setWrapMode(1,RT_WRAP_REPEAT);
+    res->setReadMode(RT_TEXTURE_READ_NORMALIZED_FLOAT);
+    res->setIndexingMode(RT_TEXTURE_INDEX_NORMALIZED_COORDINATES);
+    res->setMaxAnisotropy(ANISOTROPY);
+    res->setFilteringModes(RT_FILTER_LINEAR,RT_FILTER_LINEAR,RT_FILTER_NONE);
+
+    ILboolean success=ilLoadImage((ILstring)(scene_p+name).c_str());
+    if(success){
+        ilConvertImage(IL_LUMINANCE,IL_UNSIGNED_BYTE);
+        std::vector<Buffer> mipmaps;
+        int nmipmap=0;
+        while(ilActiveMipmap(nmipmap)&&nmipmap<MIPMAPS){
+            int w=ilGetInteger(IL_IMAGE_WIDTH);
+            int h=ilGetInteger(IL_IMAGE_HEIGHT);
+            //std::cout<<w<<'x'<<h<<std::endl;
+            void * data= (void*)ilGetData();
+            mipmaps.push_back(renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_UNSIGNED_BYTE,w,h));
+            void * dataMap = mipmaps[nmipmap]->map();
+            ILint size = ilGetInteger(IL_IMAGE_SIZE_OF_DATA);
+            //std::cout<<size<<std::endl;
+            memcpy(dataMap,data,size);
+            mipmaps[nmipmap]->unmap();
+            mipmaps[nmipmap]->validate();
+            nmipmap++;
+            ilBindImage(image);
+            iluBuildMipmaps();
+        }
+        res->setMipLevelCount(nmipmap);
+        for(int i=0; i<nmipmap; i++){
+            res->setBuffer(0,i,mipmaps[i]);
+        }
         res->validate();
     }
     else{
@@ -223,6 +278,7 @@ inline std::vector<Material> loadMaterials(const aiScene *s, std::map<std::strin
     Program any_hit_radiance = renderer->createProgramFromPTXFile(ptx_p,"any_hit_radiance");
 
     Buffer noBuffer = renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_BYTE4,1,1);
+    Buffer noBufferBump = renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_BYTE,1,1);
 
     TextureSampler noTex=renderer->createTextureSampler();
     noTex->setWrapMode(0,RT_WRAP_CLAMP_TO_EDGE);
@@ -234,6 +290,17 @@ inline std::vector<Material> loadMaterials(const aiScene *s, std::map<std::strin
     noTex->setMaxAnisotropy(ANISOTROPY);
     noTex->setArraySize(1);
     noTex->setBuffer(0,0,noBuffer);
+
+    TextureSampler noTexBump=renderer->createTextureSampler();
+    noTexBump->setWrapMode(0,RT_WRAP_CLAMP_TO_EDGE);
+    noTexBump->setWrapMode(1,RT_WRAP_CLAMP_TO_EDGE);
+    noTexBump->setReadMode(RT_TEXTURE_READ_ELEMENT_TYPE);
+    noTexBump->setIndexingMode(RT_TEXTURE_INDEX_NORMALIZED_COORDINATES);
+    noTexBump->setFilteringModes(RT_FILTER_LINEAR,RT_FILTER_LINEAR,RT_FILTER_NONE);
+    noTexBump->setMipLevelCount(1);
+    noTexBump->setMaxAnisotropy(ANISOTROPY);
+    noTexBump->setArraySize(1);
+    noTexBump->setBuffer(0,0,noBufferBump);
 
     for(unsigned int m=0; m<s->mNumMaterials; m++)
     {
@@ -254,6 +321,19 @@ inline std::vector<Material> loadMaterials(const aiScene *s, std::map<std::strin
             optix_mat["tex0"]->setTextureSampler(noTex);
             optix_mat["texCount"]->setInt(0);
         }
+
+        if(AI_SUCCESS==mat->GetTexture(aiTextureType_HEIGHT,0,&texPath))
+        {
+            std::cout<<"Bump: "<<texPath.data<<std::endl;
+            optix_mat["bump"]->setTextureSampler(newTextureBump(texPath.data));
+            optix_mat["bumpCount"]->setInt(1);
+        }
+        else
+        {
+            optix_mat["bump"]->setTextureSampler(noTex);
+            optix_mat["bumpCount"]->setInt(0);
+        }
+
         aiColor4D diffuse;
         if(AI_SUCCESS==aiGetMaterialColor(mat,AI_MATKEY_COLOR_DIFFUSE,&diffuse))
         {
@@ -307,10 +387,10 @@ Acceleration newAccelerator(){
 Acceleration newAcceleratorGeom(){
     //Acceleration acc=renderer->createAcceleration("TriangleKdTree","KdTree");
     Acceleration acc=renderer->createAcceleration("Sbvh","Bvh");
-    //acc->setProperty("vertex_buffer_name","vertex_buffer");
-    //acc->setProperty("vertex_buffer_stride","4");
-    //acc->setProperty("index_buffer_name","index_buffer");
-    //acc->setProperty("index_buffer_stride","4");
+    acc->setProperty("vertex_buffer_name","vertex_buffer");
+    acc->setProperty("vertex_buffer_stride","0");
+    acc->setProperty("index_buffer_name","index_buffer");
+    acc->setProperty("index_buffer_stride","0");
     return acc;
 }
 
@@ -370,7 +450,7 @@ Transform loadNode(aiNode* node, GeometryInstance meshes[])
 
 inline Group loadGeometry(const aiScene * s, std::vector<Material> materialVec)
 {
-    Buffer noTexCoord=renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT2,1);
+    //Buffer noTexCoord=renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT2,1);
     Program bounding_box = renderer->createProgramFromPTXFile(ptx_p,"boundingBoxMesh");
     Program intersect = renderer->createProgramFromPTXFile(ptx_p,"intersectMesh");
     GeometryInstance meshes[s->mNumMeshes];
@@ -411,6 +491,21 @@ inline Group loadGeometry(const aiScene * s, std::vector<Material> materialVec)
         normal_buffer->validate();
         //copy tangents
 
+        Buffer tangent_buffer;
+        Buffer bitangent_buffer;
+        if(mesh->HasTangentsAndBitangents()){
+            std::cout<<"Loading Tangents"<<std::endl;
+            tangent_buffer=renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT3,mesh->mNumVertices);
+            bitangent_buffer=renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT3,mesh->mNumVertices);
+
+            void * temp_tan=tangent_buffer->map();
+            memcpy(temp_tan,mesh->mTangents,mesh->mNumVertices*3*sizeof(float));
+            tangent_buffer->unmap();
+
+            void * temp_bitan=bitangent_buffer->map();
+            memcpy(temp_bitan,mesh->mBitangents,mesh->mNumVertices*3*sizeof(float));
+            bitangent_buffer->unmap();
+        }
         //copy tex coordinates
         Buffer texCoord_buffer;
         if(mesh->HasTextureCoords(0))
@@ -436,9 +531,11 @@ inline Group loadGeometry(const aiScene * s, std::vector<Material> materialVec)
             optix_mesh["hasTexCoord"]->setInt(1);
         }
         else{
-            optix_mesh["texCoord_buffer"]->set(noTexCoord);
+            //optix_mesh["texCoord_buffer"]->set(noTexCoord);
             optix_mesh["hasTexCoord"]->setInt(0);
         }
+        optix_mesh["tangent_buffer"]->set(tangent_buffer);
+        optix_mesh["bitangent_buffer"]->set(bitangent_buffer);
         //set optix programs
         std::cout<<"Setting Programs"<<std::endl;
         optix_mesh->setBoundingBoxProgram(bounding_box);
@@ -511,6 +608,8 @@ void inline initContext()
     renderer["V"]->setFloat(V);
     renderer["W"]->setFloat(lookDir);
     renderer["fov"]->setFloat(1.f);
+
+    renderer["lightDir"]->setFloat(normalize(make_float3(-0.5f,-5.f,-1.f)));
 
     renderer->validate();
 }

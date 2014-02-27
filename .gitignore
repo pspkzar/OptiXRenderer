@@ -17,7 +17,7 @@
 
 #binaries
 bin/Debug/*
-bin/Releas/*
+bin/Release/*
 
 #ptx files
 *.ptx
@@ -32,4 +32,4 @@ teapot
 cornell-box
 head
 san-miguel
-
+powerplant
