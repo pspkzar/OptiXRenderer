@@ -14,6 +14,7 @@
 				<Option compiler="gcc" />
 				<Compiler>
 					<Add option="-g" />
+					<Add directory="include" />
 				</Compiler>
 			</Target>
 			<Target title="Release">
@@ -23,6 +24,7 @@
 				<Option compiler="gcc" />
 				<Compiler>
 					<Add option="-O2" />
+					<Add directory="include" />
 				</Compiler>
 				<Linker>
 					<Add option="-s" />
@@ -40,11 +42,16 @@
 			<Add library="/opt/optix/lib64/liboptix.so" />
 			<Add library="/opt/optix/lib64/libcudart.so" />
 		</Linker>
+		<Unit filename="context.h" />
+		<Unit filename="geometry.h" />
+		<Unit filename="include/OptixRenderer.h" />
 		<Unit filename="main.cpp" />
+		<Unit filename="material.h" />
 		<Unit filename="rt.cu">
 			<Option compile="1" />
 			<Option compiler="gcc" use="1" buildCommand="nvcc -O3 --use_fast_math -ptx -I/opt/optix/include rt.cu -o rt.ptx" />
 		</Unit>
+		<Unit filename="src/OptixRenderer.cpp" />
 		<Extensions>
 			<code_completion />
 			<envvars />
