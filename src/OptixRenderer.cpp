@@ -7,6 +7,7 @@
 #include <IL/il.h>
 #include <IL/ilu.h>
 
+
 #define ANISOTROPY 1.f
 #define MIPMAPS 1
 
@@ -62,7 +63,32 @@ void OptixRenderer::loadMaterials(){
         if(AI_SUCCESS==mat->GetTexture(aiTextureType_DIFFUSE, 0, &diffTexPath)){
             TextureSampler diffTex = createTextureRGBA(scene_path+string(diffTexPath.data));
             optix_mat["map_Kd"]->setTextureSampler(diffTex);
+
         }
+        else{
+            optix_mat["map_Kd"]->setTextureSampler(createTextureRGBA(""));
+        }
+
+        aiString specTexPath;
+        if(AI_SUCCESS==mat->GetTexture(aiTextureType_SPECULAR, 0, &specTexPath)){
+            TextureSampler specTex = createTextureRGBA(scene_path+string(specTexPath.data));
+            optix_mat["map_Ks"]->setTextureSampler(specTex);
+        }
+        else{
+            optix_mat["map_Ks"]->setTextureSampler(createTextureRGBA(""));
+        }
+
+        aiString bumpTexPath;
+        if(AI_SUCCESS==mat->GetTexture(aiTextureType_HEIGHT, 0, &bumpTexPath)){
+            TextureSampler bumpTex = createTextureLum(scene_path+string(bumpTexPath.data));
+            optix_mat["map_bump"]->setTextureSampler(bumpTex);
+        }
+        else{
+            optix_mat["map_bump"]->setTextureSampler(createTextureLum(""));
+        }
+
+        optix_mat->validate();
+        materials[mat_name.data]=optix_mat;
     }
 }
 
@@ -117,14 +143,83 @@ TextureSampler OptixRenderer::createTextureRGBA(string file){
         for(int i=0; i<nmipmap; i++){
             res->setBuffer(0,i,mipmaps[i]);
         }
-        res->validate();
+
     }
     else{
-        res->destroy();
-        cout<<"Error reading texture "<<file<<endl;
-        exit(0);
+        res->setMipLevelCount(1u);
+        Buffer white = context->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_UNSIGNED_BYTE4,1,1);
+        unsigned char * bytes = static_cast<unsigned char *>(white->map());
+        bytes[0]=255;
+        bytes[1]=255;
+        bytes[2]=255;
+        bytes[3]=255;
+        white->unmap();
+        white->validate();
+        res->setBuffer(0,0,white);
+    }
+
+    res->validate();
+
+    ilBindImage(0);
+    ilDeleteImage(image);
+    return res;
+}
+
+TextureSampler OptixRenderer::createTextureLum(std::string file)
+{
+    ILuint image=iluGenImage();
+    ilBindImage(image);
+    ilEnable(IL_ORIGIN_SET);
+    ilOriginFunc(IL_ORIGIN_LOWER_LEFT);
+    iluBuildMipmaps();
+
+    TextureSampler res=context->createTextureSampler();
+    res->setArraySize(1);
+
+    res->setWrapMode(0,RT_WRAP_REPEAT);
+    res->setWrapMode(1,RT_WRAP_REPEAT);
+    res->setReadMode(RT_TEXTURE_READ_NORMALIZED_FLOAT);
+    res->setIndexingMode(RT_TEXTURE_INDEX_NORMALIZED_COORDINATES);
+    res->setMaxAnisotropy(ANISOTROPY);
+    res->setFilteringModes(RT_FILTER_LINEAR,RT_FILTER_LINEAR,RT_FILTER_NONE);
+
+    ILboolean success=ilLoadImage((ILstring) file.c_str());
+    if(success){
+        ilConvertImage(IL_LUMINANCE,IL_UNSIGNED_BYTE);
+        std::vector<Buffer> mipmaps;
+        int nmipmap=0;
+        while(ilActiveMipmap(nmipmap)&&nmipmap<MIPMAPS){
+            int w=ilGetInteger(IL_IMAGE_WIDTH);
+            int h=ilGetInteger(IL_IMAGE_HEIGHT);
+            //std::cout<<w<<'x'<<h<<std::endl;
+            void * data= (void*)ilGetData();
+            mipmaps.push_back(context->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_UNSIGNED_BYTE,w,h));
+            void * dataMap = mipmaps[nmipmap]->map();
+            ILint size = ilGetInteger(IL_IMAGE_SIZE_OF_DATA);
+            //std::cout<<size<<std::endl;
+            memcpy(dataMap,data,size);
+            mipmaps[nmipmap]->unmap();
+            mipmaps[nmipmap]->validate();
+            nmipmap++;
+            ilBindImage(image);
+            iluBuildMipmaps();
+        }
+        res->setMipLevelCount(nmipmap);
+        for(int i=0; i<nmipmap; i++){
+            res->setBuffer(0,i,mipmaps[i]);
+        }
+    }
+    else{
+        res->setMipLevelCount(1u);
+        Buffer white = context->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_UNSIGNED_BYTE,1,1);
+        unsigned char * bytes = static_cast<unsigned char *>(white->map());
+        bytes[0]=255;
+        white->unmap();
+        white->validate();
+        res->setBuffer(0,0,white);
     }
     ilBindImage(0);
     ilDeleteImage(image);
+    res->validate();
     return res;
 }

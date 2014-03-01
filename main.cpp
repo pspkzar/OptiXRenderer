@@ -28,7 +28,7 @@
 #define STEP 2
 #define ANG_STEP 0.1
 
-#define USE_MS 0
+#define USE_MS 1
 
 enum EntryPoints {
     ENTRY_PINHOLE,
