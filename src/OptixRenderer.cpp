@@ -1,6 +1,7 @@
 #include "OptixRenderer.h"
 
 #include <assimp/cimport.h>
+#include <assimp/cexport.h>
 #include <assimp/postprocess.h>
 #include <assimp/material.h>
 
@@ -94,6 +95,85 @@ void OptixRenderer::loadMaterials(){
 
 void OptixRenderer::loadGeometry(){
 
+    int nmeshes = scene->mNumMeshes;
+
+    for(int i=0; i<nmeshes; i++){
+
+        aiMesh * mesh = scene->mMeshes[i];
+        int nprimitive = mesh->mNumFaces;
+        int nvertex = mesh->mNumVertices;
+
+        Geometry optix_mesh = context->createGeometry();
+        optix_mesh->setPrimitiveCount(nprimitive);
+
+        Buffer index_buffer = context->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_INT3,nprimitive);
+        int *tmp_index = static_cast<int * >(index_buffer->map());
+        for(int p=0; p<nprimitive; p++){
+            memcpy(tmp_index+3*p,mesh->mFaces[p].mIndices,3*sizeof(int));
+        }
+        index_buffer->unmap();
+        index_buffer->validate();
+        optix_mesh["index_buffer"]->set(index_buffer);
+
+        Buffer vertex_buffer = context->createBuffer(RT_BUFFER_INPUT, RT_FORMAT_FLOAT3, nvertex);
+        void *tmp_vertex = vertex_buffer->map();
+        memcpy(tmp_vertex, mesh->mVertices, nvertex*3*sizeof(float));
+        vertex_buffer->unmap();
+        vertex_buffer->validate();
+        optix_mesh["vertex_buffer"]->set(vertex_buffer);
+
+        Buffer normal_buffer = context->createBuffer(RT_BUFFER_INPUT, RT_FORMAT_FLOAT3, nvertex);
+        void *tmp_normal = normal_buffer->map();
+        memcpy(tmp_normal, mesh->mNormals, nvertex*3*sizeof(float));
+        normal_buffer->unmap();
+        normal_buffer->validate();
+        optix_mesh["normal_buffer"]->set(normal_buffer);
+
+        Buffer tangent_buffer = context->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT3, nvertex);
+        void *tmp_tangent = tangent_buffer->map();
+        memcpy(tmp_tangent, mesh->mTangents, nvertex*3*sizeof(float));
+        tangent_buffer->unmap();
+        tangent_buffer->validate();
+        optix_mesh["tangent_buffer"]->set(tangent_buffer);
+
+        Buffer bitangent_buffer = context->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT3, nvertex);
+        void *tmp_bitangent = bitangent_buffer->map();
+        memcpy(tmp_bitangent, mesh->mBitangents, nvertex*3*sizeof(float));
+        bitangent_buffer->unmap();
+        bitangent_buffer->validate();
+        optix_mesh["bitangent_buffer"]->set(bitangent_buffer);
+
+        if(mesh->HasTextureCoords(0)){
+            Buffer texCoord_buffer = context->createBuffer(RT_BUFFER_INPUT, RT_FORMAT_FLOAT2, nvertex);
+            float *tmp_texCoord = static_cast<float * >(texCoord_buffer->map());
+            for(int tc=0; tc<nvertex; tc++){
+                tmp_texCoord[2*tc] = mesh->mTextureCoords[0][tc].x;
+                tmp_texCoord[2*tc+1] = mesh->mTextureCoords[0][tc].y;
+            }
+            texCoord_buffer->unmap();
+            texCoord_buffer->validate();
+            optix_mesh["texCoord_buffer"]->set(texCoord_buffer);
+            optix_mesh["hasTexCoord"]->setInt(1);
+        }
+        else{
+            optix_mesh["texCoord_buffer"]->set(context->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT2, 1));
+            optix_mesh["hasTexCoord"]->setInt(0);
+        }
+
+        optix_mesh->validate();
+
+        GeometryInstance instance = context->createGeometryInstance();
+        instance->setGeometry(optix_mesh);
+        instance->setMaterialCount(1);
+
+        aiString mat_name;
+        aiGetMaterialString(scene->mMaterials[mesh->mMaterialIndex], AI_MATKEY_NAME, &mat_name);
+        instance->setMaterial(0, materials[mat_name.data]);
+
+        instance->validate();
+
+        meshes.push_back(instance);
+    }
 }
 
 void OptixRenderer::loadSceneGraph(){
