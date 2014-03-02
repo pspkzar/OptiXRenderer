@@ -1,5 +1,5 @@
 # depslib dependency file v1.0
-1393692293 source:/home/cesar/Documentos/CG/OptiX/main.cpp
+1393770987 source:/home/cesar/Documentos/CG/OptiX/main.cpp
 	<iostream>
 	<fstream>
 	<string>
@@ -11,6 +11,7 @@
 	<IL/il.h>
 	<IL/ilu.h>
 	<assimp/Importer.hpp>
+	<assimp/cimport.h>
 	<assimp/material.h>
 	<assimp/scene.h>
 	<assimp/postprocess.h>

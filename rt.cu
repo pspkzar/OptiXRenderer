@@ -54,6 +54,7 @@ rtBuffer<float2>texCoord_buffer;
 rtDeclareVariable(int, hasTexCoord, , );
 rtBuffer<float3>tangent_buffer;
 rtBuffer<float3>bitangent_buffer;
+rtDeclareVariable(int, hasTangents, , );
 
 //intersection attributes
 rtDeclareVariable(float2, texCoord, attribute texCoord, );
@@ -240,13 +241,23 @@ RT_PROGRAM void intersectMesh(int primIdx){
             float3 n2=normal_buffer[id.y];
             float3 n3=normal_buffer[id.z];
 
-            float3 t1=tangent_buffer[id.x];
-            float3 t2=tangent_buffer[id.y];
-            float3 t3=tangent_buffer[id.z];
+            if(hasTangents){
+                float3 t1=tangent_buffer[id.x];
+                float3 t2=tangent_buffer[id.y];
+                float3 t3=tangent_buffer[id.z];
 
-            float3 b1=bitangent_buffer[id.x];
-            float3 b2=bitangent_buffer[id.y];
-            float3 b3=bitangent_buffer[id.z];
+                float3 b1=bitangent_buffer[id.x];
+                float3 b2=bitangent_buffer[id.y];
+                float3 b3=bitangent_buffer[id.z];
+
+                tangent=(1.0f-beta-gamma)*t1 + beta*t2 +gamma*t3;
+                bitangent=(1.0f-beta-gamma)*b1 + beta*b2 +gamma*b3;
+            }
+            else{
+                tangent=make_float3(0.f);
+                bitangent=make_float3(0.f);
+            }
+
 
             //loading texCoords
             if(hasTexCoord){
@@ -262,8 +273,7 @@ RT_PROGRAM void intersectMesh(int primIdx){
             //setting attributes
             shading_normal=(1.0f-beta-gamma)*n1 + beta*n2 +gamma*n3;
             geometric_normal=normalize(n);
-            tangent=(1.0f-beta-gamma)*t1 + beta*t2 +gamma*t3;
-            bitangent=(1.0f-beta-gamma)*b1 + beta*b2 +gamma*b3;
+
             rtReportIntersection(0);
         }
     }

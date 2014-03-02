@@ -11,6 +11,7 @@
 #include <IL/ilu.h>
 
 #include <assimp/Importer.hpp>
+#include <assimp/cimport.h>
 #include <assimp/material.h>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
@@ -29,6 +30,8 @@
 #define ANG_STEP 0.1
 
 #define USE_MS 1
+
+unsigned int LoadFlags = aiProcessPreset_TargetRealtime_MaxQuality|aiProcess_RemoveRedundantMaterials|aiProcess_PreTransformVertices;
 
 enum EntryPoints {
     ENTRY_PINHOLE,
@@ -122,7 +125,9 @@ inline const aiScene* loadScene(std::string scene_path)
         return NULL;
     }
 
-    const aiScene *s=importer.ReadFile(scene_path,aiProcessPreset_TargetRealtime_MaxQuality|aiProcess_OptimizeGraph);
+    const aiScene *s=aiImportFile(scene_path.c_str(), LoadFlags);
+    aiApplyPostProcessing(s, aiProcess_CalcTangentSpace);
+    aiApplyPostProcessing(s, aiProcess_OptimizeGraph);
 
     if(!s)
     {
@@ -461,7 +466,7 @@ Transform loadNode(aiNode* node, GeometryInstance meshes[])
 
 inline Group loadGeometry(const aiScene * s, std::vector<Material> materialVec)
 {
-    //Buffer noTexCoord=renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT2,1);
+    Buffer noTexCoord=renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT2,1);
     Program bounding_box = renderer->createProgramFromPTXFile(ptx_p,"boundingBoxMesh");
     Program intersect = renderer->createProgramFromPTXFile(ptx_p,"intersectMesh");
     GeometryInstance meshes[s->mNumMeshes];
@@ -542,11 +547,20 @@ inline Group loadGeometry(const aiScene * s, std::vector<Material> materialVec)
             optix_mesh["hasTexCoord"]->setInt(1);
         }
         else{
-            //optix_mesh["texCoord_buffer"]->set(noTexCoord);
+            optix_mesh["texCoord_buffer"]->set(noTexCoord);
             optix_mesh["hasTexCoord"]->setInt(0);
         }
-        optix_mesh["tangent_buffer"]->set(tangent_buffer);
-        optix_mesh["bitangent_buffer"]->set(bitangent_buffer);
+        if(mesh->HasTangentsAndBitangents()) {
+            optix_mesh["tangent_buffer"]->set(tangent_buffer);
+            optix_mesh["bitangent_buffer"]->set(bitangent_buffer);
+            optix_mesh["hasTangents"]->setInt(1);
+        }
+        else{
+            optix_mesh["tangent_buffer"]->set(renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT3,1));
+            optix_mesh["bitangent_buffer"]->set(renderer->createBuffer(RT_BUFFER_INPUT,RT_FORMAT_FLOAT3,1));
+            optix_mesh["hasTangents"]->setInt(0);
+
+        }
         //set optix programs
         std::cout<<"Setting Programs"<<std::endl;
         optix_mesh->setBoundingBoxProgram(bounding_box);
