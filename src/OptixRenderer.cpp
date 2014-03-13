@@ -18,16 +18,25 @@ using namespace optix;
 OptixRenderer::OptixRenderer(string path, string file) : materials(), meshes()
 {
     //ctor
-    //creating context
-    context=Context::create();
-    //loading scene
     scene_path=path;
     scene_file=file;
-    scene=aiImportFile((path+file).c_str(), aiProcessPreset_TargetRealtime_MaxQuality | aiProcess_OptimizeGraph);
+    //creating context
+    context=Context::create();
+    width=0;
+    height=0;
+    output=context->createBuffer(RT_BUFFER_OUTPUT, RT_FORMAT_FLOAT4, width, height);
+    context["output"]->set(output);
+}
+
+void OptixRenderer::init(){
+
+    //loading scene
+    scene=aiImportFile((scene_path+scene_file).c_str(), aiProcessPreset_TargetRealtime_MaxQuality | aiProcess_OptimizeGraph);
 
     loadMaterials();
     loadGeometry();
     loadSceneGraph();
+
 
 }
 
@@ -91,6 +100,14 @@ void OptixRenderer::loadMaterials(){
         optix_mat->validate();
         materials[mat_name.data]=optix_mat;
     }
+}
+
+void OptixRenderer::setIntersectionProgram(string file, string program){
+    intersect=context->createProgramFromPTXFile(file,program);
+}
+
+void OptixRenderer::setBoundingBoxProgram(string file, string program){
+    bounding_box=context->createProgramFromPTXFile(file,program);
 }
 
 void OptixRenderer::loadGeometry(){
@@ -160,6 +177,8 @@ void OptixRenderer::loadGeometry(){
             optix_mesh["hasTexCoord"]->setInt(0);
         }
 
+
+
         optix_mesh->validate();
 
         GeometryInstance instance = context->createGeometryInstance();
@@ -176,8 +195,69 @@ void OptixRenderer::loadGeometry(){
     }
 }
 
-void OptixRenderer::loadSceneGraph(){
+Acceleration OptixRenderer::createAccelerationMeshes(){
+    Acceleration acc = context->createAcceleration("Sbvh","Bvh");
+    acc->setProperty("vertex_buffer_name","vertex_buffer");
+    acc->setProperty("vertex_buffer_stride","0");
+    acc->setProperty("index_buffer_name","index_buffer");
+    acc->setProperty("index_buffer_stride","0");
+    return acc;
+}
 
+Acceleration OptixRenderer::createAccelerationGroups(){
+    Acceleration acc = context->createAcceleration("Sbvh","Bvh");
+
+    return acc;
+}
+
+GeometryGroup OptixRenderer::loadGeometryGroup(aiNode * node){
+    GeometryGroup res = context->createGeometryGroup();
+    res->setChildCount(node->mNumMeshes);
+    res->setAcceleration(createAccelerationMeshes());
+    for(unsigned int i=0; i<node->mNumMeshes; i++){
+        GeometryInstance instance = meshes[node->mMeshes[i]];
+        res->setChild(i,instance);
+    }
+    res->validate();
+    return res;
+}
+
+Transform OptixRenderer::loadNode(aiNode *node){
+    Transform t = context->createTransform();
+    GeometryGroup geom = loadGeometryGroup(node);
+
+    aiMatrix4x4 trans = node->mTransformation;
+    float mat_arr[16]={trans.a1, trans.b1, trans.c1, trans.d1,
+                       trans.a2, trans.b2, trans.c2, trans.d2,
+                       trans.a3, trans.b3, trans.c3, trans.d3,
+                       trans.a4, trans.b4, trans.c4, trans.d4};
+    Matrix4x4 mat(mat_arr);
+    Matrix4x4 mat_inv=mat.inverse();
+
+    t->setMatrix(false, mat.getData(), mat_inv.getData());
+
+
+    if(node->mNumChildren>0){
+        Group child = context->createGroup();
+        child->setAcceleration(createAccelerationGroups());
+        child->setChildCount(node->mNumChildren+1);
+        for(unsigned int i=0; i<node->mNumChildren; i++){
+            child->setChild(i, loadNode(node->mChildren[i]));
+        }
+        child->setChild(node->mNumChildren, geom);
+        child->validate();
+        t->setChild(child);
+    }
+    else{
+        t->setChild(geom);
+    }
+
+    t->validate();
+    return t;
+}
+
+void OptixRenderer::loadSceneGraph(){
+    top=loadNode(scene->mRootNode);
 }
 
 TextureSampler OptixRenderer::createTextureRGBA(string file){
@@ -245,7 +325,7 @@ TextureSampler OptixRenderer::createTextureRGBA(string file){
     return res;
 }
 
-TextureSampler OptixRenderer::createTextureLum(std::string file)
+TextureSampler OptixRenderer::createTextureLum(string file)
 {
     ILuint image=iluGenImage();
     ilBindImage(image);
@@ -302,4 +382,76 @@ TextureSampler OptixRenderer::createTextureLum(std::string file)
     ilDeleteImage(image);
     res->validate();
     return res;
+}
+
+void OptixRenderer::setRayTypeCount(int n){
+    context->setRayTypeCount(n);
+}
+
+void OptixRenderer::setOutputSize(int w, int h){
+    width=w;
+    height=h;
+    output->setSize(width, height);
+}
+
+void OptixRenderer::setEntryProgram(string file, string program){
+    context->setEntryPointCount(1);
+    Program entry = context->createProgramFromPTXFile(file, program);
+    context->setRayGenerationProgram(0, entry);
+}
+
+void OptixRenderer::setExceptionProgram(string file, string program){
+    context->setEntryPointCount(1);
+    Program e = context->createProgramFromPTXFile(file, program);
+    context->setExceptionProgram(0, e);
+}
+
+void OptixRenderer::setMissProgram(int ray_type, string file, string program){
+    Program p = context->createProgramFromPTXFile(file, program);
+    context->setMissProgram(ray_type, p);
+}
+
+void OptixRenderer::setDefaultClosestHitProgram(int ray_type, string file, string program){
+    Program p = context->createProgramFromPTXFile(file, program);
+    for(map<string, Material>::iterator i=materials.begin(); i!=materials.end(); i++){
+        Material m = i->second;
+        m->setClosestHitProgram(ray_type,p);
+    }
+}
+
+void OptixRenderer::setDefaultAnyHitProgram(int ray_type, string file, string program){
+    Program p = context->createProgramFromPTXFile(file, program);
+    for(map<string, Material>::iterator i=materials.begin(); i!=materials.end(); i++){
+        Material m = i->second;
+        m->setAnyHitProgram(ray_type,p);
+    }
+}
+
+void OptixRenderer::setMaterialClosestHitProgram(string mat_name, int ray_type, string file, string program){
+    Material m = materials[mat_name];
+    Program p = context->createProgramFromPTXFile(file, program);
+    m->setClosestHitProgram(ray_type, p);
+}
+
+void OptixRenderer::setMaterialAnyHitProgram(string mat_name, int ray_type, string file, string program){
+    Material m = materials[mat_name];
+    Program p = context->createProgramFromPTXFile(file, program);
+    m->setAnyHitProgram(ray_type, p);
+}
+
+
+inline void OptixRenderer::run(){
+    context->launch(0, width, height);
+}
+
+void* OptixRenderer::mapOutputBuffer(){
+    return output->map();
+}
+
+void OptixRenderer::unmapOutputBuffer(){
+    output->unmap();
+}
+
+Variable OptixRenderer::variable(const string& name){
+    return context[name];
 }

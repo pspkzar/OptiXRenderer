@@ -1,5 +1,5 @@
 # depslib dependency file v1.0
-1393770987 source:/home/cesar/Documentos/CG/OptiX/main.cpp
+1394729532 source:/home/cesar/Documentos/CG/OptiX/main.cpp
 	<iostream>
 	<fstream>
 	<string>
@@ -145,7 +145,7 @@
 	"optixu_math_namespace.h"
 	<assert.h>
 
-1393707244 source:/home/cesar/Documentos/CG/OptiX/src/OptixRenderer.cpp
+1394738635 source:/home/cesar/Documentos/CG/OptiX/src/OptixRenderer.cpp
 	"OptixRenderer.h"
 	<assimp/cimport.h>
 	<assimp/cexport.h>
@@ -154,7 +154,7 @@
 	<IL/il.h>
 	<IL/ilu.h>
 
-1393641003 /home/cesar/Documentos/CG/OptiX/include/OptixRenderer.h
+1394738359 /home/cesar/Documentos/CG/OptiX/include/OptixRenderer.h
 	<map>
 	<optix_world.h>
 	<assimp/scene.h>
